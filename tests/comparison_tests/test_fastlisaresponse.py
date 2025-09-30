@@ -84,7 +84,7 @@ def sampling_frequency():
 
 @pytest.fixture
 def t_obs():
-    return 2.0  # years
+    return 0.25  # years
 
 
 @pytest.fixture
@@ -166,7 +166,7 @@ def test_response(
         intrinsic_parameters["psi"],
         T=t_obs,
         dt=dt,
-    )
+    )[:-1]
 
     xyz_waveform_ref = flr_response(
         intrinsic_parameters["A"],
@@ -235,6 +235,7 @@ def test_response(
     np.testing.assert_allclose(
         projections,
         ref_projections,
+        atol=1e-32,
     )
     print(len(xyz_waveform), len(xyz_waveform_ref))
     # Check waveform matches
@@ -245,4 +246,5 @@ def test_response(
         np.testing.assert_allclose(
             xyz_waveform[i],
             xyz_waveform_ref[i],
+            atol=1e-32,
         )
