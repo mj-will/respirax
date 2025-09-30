@@ -22,46 +22,23 @@ C_inv = 3.3356409519815204e-09  # Inverse speed of light in s/m
 NLINKS = 6  # Number of LISA links
 
 
+@jax.jit
 def _compute_single_link_response(
     input_waveform: jnp.ndarray,
-    t_data: jnp.ndarray,
+    t_values: jnp.ndarray,
     k: jnp.ndarray,
     u: jnp.ndarray,
     v: jnp.ndarray,
-    x0_array: jnp.ndarray,
-    x1_array: jnp.ndarray,
-    L_array: jnp.ndarray,
-    t_orbit: jnp.ndarray,  # Added: time points for orbital data
-    num_pts: int,
-    start_ind: int,
+    x0_all: jnp.ndarray,
+    x1_all: jnp.ndarray,
+    L_all: jnp.ndarray,
+    n_all: jnp.ndarray,
     sampling_frequency: float,
     A_coeffs: jnp.ndarray,
     E_coeffs: jnp.ndarray,
     deps: float,
 ) -> jnp.ndarray:
     """Compute response for a single LISA link (vectorized)."""
-
-    # Get all time points we'll process
-    time_indices = jnp.arange(num_pts) + start_ind
-    t_values = t_data[time_indices]
-
-    # Vectorized spacecraft position interpolation for all time points
-    def interp_positions(t_val):
-        x0 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
-            t_val, t_orbit, x0_array.T
-        ).T  # Receiver
-        x1 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
-            t_val, t_orbit, x1_array.T
-        ).T  # Emitter
-        L = jnp.interp(t_val, t_orbit, L_array)  # Light travel time
-        return x0, x1, L
-
-    # Apply to all time values at once
-    x0_all, x1_all, L_all = jax.vmap(interp_positions)(t_values)
-
-    # Vectorized link vector computation
-    link_vecs = x0_all - x1_all
-    n_all = jax.vmap(normalize_vector)(link_vecs)
 
     # Vectorized xi projections
     xi_p_all, xi_c_all = jax.vmap(xi_projections, in_axes=(None, None, 0))(
@@ -119,7 +96,12 @@ class LISAResponse:
     """
 
     def __init__(
-        self, sampling_frequency: float, num_pts: int, order: int = 25
+        self,
+        sampling_frequency: float,
+        num_pts: int,
+        orbits_data,
+        order: int = 25,
+        t0: float = 10000.0,
     ):
         """Initialize LISA response calculator.
 
@@ -136,6 +118,8 @@ class LISAResponse:
         self.dt = 1.0 / sampling_frequency
         self.num_pts = num_pts
         self.order = order
+        self.t0 = t0
+
         self.buffer_integer = order * 2 + 1
 
         # Prepare interpolation coefficients
@@ -144,18 +128,98 @@ class LISAResponse:
 
         # Initialize TDI processor
         self.tdi_processor = TDIProcessor(sampling_frequency, order)
-        self._compute_single_link_response_jit = jax.jit(
-            _compute_single_link_response,
-            static_argnums=(9,),
+
+        self.orbits_data = orbits_data
+
+        # Link spacecraft mappings (LISA convention)
+        # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
+        sc_pairs = [(1, 2), (2, 3), (3, 1), (1, 3), (3, 2), (2, 1)]
+
+        # Pre-organize orbital data for vectorized processing
+        all_x0_arrays = []
+        all_x1_arrays = []
+        all_L_arrays = []
+
+        for link_idx in range(NLINKS):
+            sc0, sc1 = sc_pairs[link_idx]
+            all_x0_arrays.append(orbits_data["positions"][sc0 - 1])
+            all_x1_arrays.append(orbits_data["positions"][sc1 - 1])
+            all_L_arrays.append(orbits_data["light_travel_times"][link_idx])
+
+        # Stack arrays for vectorized processing
+        self.x0_stack = jnp.stack(all_x0_arrays)  # (6, time, 3)
+        self.x1_stack = jnp.stack(all_x1_arrays)  # (6, time, 3)
+        self.L_stack = jnp.stack(all_L_arrays)  # (6, time)
+
+        # Buffer calculations - match FLR exactly
+        self.tdi_start_ind = int(t0 / self.dt)
+
+        # FLR has two different buffers:
+        # 1. check_tdi_buffer: used for projections_start_ind calculation
+        check_tdi_buffer = (
+            int(100.0 * self.sampling_frequency) + 4 * self.order
         )
+
+        # 2. projection_buffer: used for safety checks
+        # Calculate max spacecraft distance like FLR does
+        max_sc_distance = 0.0
+        for sc_pos in orbits_data["positions"]:
+            distances = jnp.sqrt(jnp.sum(sc_pos * sc_pos, axis=1))
+            max_sc_distance = max(max_sc_distance, float(jnp.max(distances)))
+
+        projection_buffer = int(max_sc_distance * C_inv) + 4 * self.order
+
+        # Use check_tdi_buffer for projections_start_ind (like FLR)
+        self.projections_start_ind = self.tdi_start_ind - 2 * check_tdi_buffer
+
+        self.t_data = (
+            jnp.arange(self.num_pts) - self.projections_start_ind
+        ) * self.dt
+
+        self.orbits_t = orbits_data["time"]
+        self.orbits_tmax = orbits_data["time"].max()
+
+        if self.projections_start_ind < projection_buffer:
+            raise ValueError(
+                "Need to increase t0. Buffer not large enough."
+            )  # This error message needs made better
+
+        if self.t_data.max() > self.orbits_tmax:
+            raise ValueError(
+                "Orbit data time range too short for requested num_pts and t0."
+            )
+
+        time_indices = jnp.arange(num_pts) + self.projections_start_ind
+        self.t_values = self.t_data[time_indices]
+
+        def interp_wrap(t_val, x0_array, x1_array, L_array):
+            def interp_positions(t_val):
+                x0 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
+                    t_val, self.orbits_t, x0_array.T
+                ).T  # Receiver
+                x1 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
+                    t_val, self.orbits_t, x1_array.T
+                ).T  # Emitter
+                L = jnp.interp(
+                    t_val, self.orbits_t, L_array
+                )  # Light travel time
+                return x0, x1, L
+
+            x0_all, x1_all, L_all = jax.vmap(interp_positions)(t_val)
+            link_vecs = x0_all - x1_all
+            n_all = jax.vmap(normalize_vector)(link_vecs)
+
+            return x0_all, x1_all, L_all, n_all
+
+        self.x0_array, self.x1_array, self.L_array, self.n_array = jax.vmap(
+            interp_wrap, in_axes=(None, 0, 0, 0)
+        )(self.t_values, self.x0_stack, self.x1_stack, self.L_stack)
 
     def get_projections(
         self,
         input_waveform: jnp.ndarray,
         lam: float,
         beta: float,
-        orbits_data: dict,
-        t0: float = 10000.0,
     ) -> jnp.ndarray:
         """Compute projections of GW signal onto LISA constellation.
 
@@ -180,79 +244,23 @@ class LISAResponse:
         # Get basis vectors
         u, v, k = get_basis_vecs(lam, beta)
 
-        # Buffer calculations - match FLR exactly
-        tdi_start_ind = int(t0 / self.dt)
-
-        # FLR has two different buffers:
-        # 1. check_tdi_buffer: used for projections_start_ind calculation
-        check_tdi_buffer = (
-            int(100.0 * self.sampling_frequency) + 4 * self.order
-        )
-
-        # 2. projection_buffer: used for safety checks
-        # Calculate max spacecraft distance like FLR does
-        max_sc_distance = 0.0
-        for sc_pos in orbits_data["positions"]:
-            distances = jnp.sqrt(jnp.sum(sc_pos * sc_pos, axis=1))
-            max_sc_distance = max(max_sc_distance, float(jnp.max(distances)))
-
-        projection_buffer = int(max_sc_distance * C_inv) + 4 * self.order
-
-        # Use check_tdi_buffer for projections_start_ind (like FLR)
-        projections_start_ind = tdi_start_ind - 2 * check_tdi_buffer
-
-        # Fix time array to align projections_start_ind with t=0
-        # This matches FLR behavior and fixes scaling issues
-        t_data = (
-            jnp.arange(len(input_waveform)) - projections_start_ind
-        ) * self.dt
-        # Trim time and waveform data to match orbital data
-        # Match FLR behavior
-        if t_data.max() > orbits_data["time"].max():
-            max_ind = jnp.where(orbits_data["time"] >= t_data.max())[0][-1]
-            t_data = t_data[:max_ind]
-            input_waveform = input_waveform[:max_ind]
-
-        if projections_start_ind < projection_buffer:
-            raise ValueError("Need to increase t0. Buffer not large enough.")
-
         # Prepare output array
         y_gw = jnp.zeros((NLINKS, self.num_pts))
 
-        # Link spacecraft mappings (LISA convention)
-        # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
-        sc_pairs = [(1, 2), (2, 3), (3, 1), (1, 3), (3, 2), (2, 1)]
-
-        # Pre-organize orbital data for vectorized processing
-        all_x0_arrays = []
-        all_x1_arrays = []
-        all_L_arrays = []
-
-        for link_idx in range(NLINKS):
-            sc0, sc1 = sc_pairs[link_idx]
-            all_x0_arrays.append(orbits_data["positions"][sc0 - 1])
-            all_x1_arrays.append(orbits_data["positions"][sc1 - 1])
-            all_L_arrays.append(orbits_data["light_travel_times"][link_idx])
-
-        # Stack arrays for vectorized processing
-        x0_stack = jnp.stack(all_x0_arrays)  # (6, time, 3)
-        x1_stack = jnp.stack(all_x1_arrays)  # (6, time, 3)
-        L_stack = jnp.stack(all_L_arrays)  # (6, time)
-
         # Vectorized link processing function
-        def process_single_link_vectorized(x0_array, x1_array, L_array):
-            return self._compute_single_link_response_jit(
+        def process_single_link_vectorized(
+            x0_array, x1_array, L_array, n_array
+        ):
+            return _compute_single_link_response(
                 input_waveform,
-                t_data,
+                self.t_values,
                 k,
                 u,
                 v,
                 x0_array,
                 x1_array,
                 L_array,
-                orbits_data["time"],
-                self.num_pts,
-                projections_start_ind,
+                n_array,
                 self.sampling_frequency,
                 self.A_coeffs,
                 self.E_coeffs,
@@ -261,13 +269,13 @@ class LISAResponse:
 
         # Apply vectorized processing over all links
         y_gw = jax.vmap(process_single_link_vectorized)(
-            x0_stack, x1_stack, L_stack
+            self.x0_array, self.x1_array, self.L_array, self.n_array
         )
 
         # Apply garbage removal to projections to match FLR behavior
         # Zero out the projection buffer regions at start and end
-        y_gw = y_gw.at[:, :projections_start_ind].set(0.0)
-        end_garbage_ind = -projections_start_ind + self.num_pts
+        y_gw = y_gw.at[:, : self.projections_start_ind].set(0.0)
+        end_garbage_ind = -self.projections_start_ind + self.num_pts
         if end_garbage_ind < y_gw.shape[1]:
             y_gw = y_gw.at[:, end_garbage_ind:].set(0.0)
 
@@ -276,7 +284,6 @@ class LISAResponse:
     def get_tdi_channels(
         self,
         projections: jnp.ndarray,
-        orbits_data: dict,
         tdi_type: str = "1st generation",
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Compute TDI channels from projections.
@@ -301,8 +308,8 @@ class LISAResponse:
         # Pass orbital data directly for on-the-fly interpolation
         # This matches fastlisaresponse approach where light travel times
         # are interpolated during TDI computation, not pre-computed
-        orbital_time = orbits_data["time"]
-        orbital_ltt = orbits_data["light_travel_times"]
+        orbital_time = self.orbits_data["time"]
+        orbital_ltt = self.orbits_data["light_travel_times"]
 
         return self.tdi_processor.compute_tdi_channels(
             projections, t_arr, orbital_time, orbital_ltt, tdi_type
@@ -313,8 +320,6 @@ class LISAResponse:
         input_waveform: jnp.ndarray,
         lam: float,
         beta: float,
-        orbits_data: dict,
-        t0: float = 10000.0,
         tdi_type: str = "1st generation",
         tdi_channels: str = "XYZ",
         return_projections: bool = False,
@@ -346,17 +351,18 @@ class LISAResponse:
             TDI channels in requested format and optionally projections
         """
         projections = self.get_projections(
-            input_waveform, lam, beta, orbits_data, t0
+            input_waveform,
+            lam,
+            beta,
         )
 
-        X, Y, Z = self.get_tdi_channels(projections, orbits_data, tdi_type)
+        X, Y, Z = self.get_tdi_channels(projections, tdi_type)
 
         # Apply garbage removal like fastlisaresponse does
         # Remove t0/dt samples from beginning and end
-        tdi_start_ind = int(t0 / self.dt)
-        X_trimmed = X[tdi_start_ind:-tdi_start_ind]
-        Y_trimmed = Y[tdi_start_ind:-tdi_start_ind]
-        Z_trimmed = Z[tdi_start_ind:-tdi_start_ind]
+        X_trimmed = X[self.tdi_start_ind : -self.tdi_start_ind]
+        Y_trimmed = Y[self.tdi_start_ind : -self.tdi_start_ind]
+        Z_trimmed = Z[self.tdi_start_ind : -self.tdi_start_ind]
 
         # Convert to requested channel format
         if tdi_channels.upper() == "XYZ":

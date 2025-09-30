@@ -191,14 +191,14 @@ def test_projections(
         sampling_frequency=sampling_frequency,
         num_pts=int(t_obs * sampling_frequency * YRSID_SI),
         order=order,
+        orbits_data=interpolated_orbital_data,
+        t0=t0,
     )
     print("Calculating projections")
     projections = response.get_projections(
         waveform,
         sky_parameters["lam"],
         sky_parameters["beta"],
-        interpolated_orbital_data,
-        t0=t0,
     )
     print("Checking projections")
     # FLR has shape (links, time)
@@ -285,15 +285,15 @@ def test_response(
     response = LISAResponse(
         sampling_frequency=sampling_frequency,
         num_pts=int(t_obs * sampling_frequency * YRSID_SI),
+        orbits_data=interpolated_orbital_data,
         order=order,
+        t0=t0,
     )
 
     xyz_waveform, projections = response.compute_response(
         waveform,
         sky_parameters["lam"],
         sky_parameters["beta"],
-        interpolated_orbital_data,
-        t0=t0,
         tdi_type=tdi_generation,
         return_projections=True,
     )

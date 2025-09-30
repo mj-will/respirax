@@ -46,7 +46,7 @@ gb = GBWave(force_backend=None)
 
 force_backend = None
 
-T = 2.0  # years
+T = 1.0  # years
 t0 = 10000.0  # time at which signal starts (chops off data at start of waveform where information is not correct)
 
 sampling_frequency = 0.1

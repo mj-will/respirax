@@ -44,7 +44,7 @@ def waveform_generator(A, f, fdot, iota, phi0, psi, T=1.0, dt=10.0):
 
 
 def main():
-    T = 2.0  # years
+    T = 1.0  # years
     sampling_frequency = 0.1  # Hz
     dt = 1.0 / sampling_frequency
 
@@ -73,6 +73,8 @@ def main():
         sampling_frequency=sampling_frequency,
         num_pts=int(T * sampling_frequency * YRSID_SI),
         order=25,
+        orbits_data=interp_data,
+        t0=10000.0,
     )
 
     lam = 5.22979888  # radians
@@ -83,8 +85,6 @@ def main():
         h,
         lam,
         beta,
-        interp_data,
-        t0=10000.0,
         tdi_type="2nd generation",
     )
 
