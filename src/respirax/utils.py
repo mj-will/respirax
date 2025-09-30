@@ -35,9 +35,9 @@ def get_basis_vecs(
     sinlam = jnp.sin(lam)
 
     # Note: These basis vectors match the CUDA implementation
-    u = jnp.array([-sinbeta * coslam, sinbeta * sinlam, cosbeta])
-    v = jnp.array([sinlam, -coslam, 0.0])
-    k = jnp.array([-cosbeta * coslam, -cosbeta * sinlam, -cosbeta])
+    v = jnp.array([-sinbeta * coslam, -sinbeta * sinlam, cosbeta])
+    u = jnp.array([sinlam, -coslam, 0.0])
+    k = jnp.array([-cosbeta * coslam, -cosbeta * sinlam, -sinbeta])
 
     return u, v, k
 

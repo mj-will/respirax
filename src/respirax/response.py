@@ -32,6 +32,7 @@ def _compute_single_link_response(
     x0_array: jnp.ndarray,
     x1_array: jnp.ndarray,
     L_array: jnp.ndarray,
+    t_orbit: jnp.ndarray,  # Added: time points for orbital data
     num_pts: int,
     start_ind: int,
     sampling_frequency: float,
@@ -45,13 +46,18 @@ def _compute_single_link_response(
         j = i + start_ind
 
         t = t_data[j]
-        x0 = x0_array[j]  # Receiver
-        x1 = x1_array[j]  # Emitter
+
+        # Interpolate spacecraft positions at exact time t (like FLR)
+        x0 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
+            t, t_orbit, x0_array.T
+        ).T  # Receiver
+        x1 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
+            t, t_orbit, x1_array.T
+        ).T  # Emitter
+        L = jnp.interp(t, t_orbit, L_array)  # Light travel time
 
         link_vec = x0 - x1
         n = normalize_vector(link_vec)
-
-        L = L_array[j]
 
         xi_p, xi_c = xi_projections(u, v, n)
 
@@ -128,7 +134,7 @@ class LISAResponse:
         self.tdi_processor = TDIProcessor(sampling_frequency, order)
         self._compute_single_link_response_jit = jax.jit(
             _compute_single_link_response,
-            static_argnums=(8,),
+            static_argnums=(9,),
         )
 
     def get_projections(
@@ -162,15 +168,38 @@ class LISAResponse:
         # Get basis vectors
         u, v, k = get_basis_vecs(lam, beta)
 
-        # Setup time array
-        t_data = jnp.arange(len(input_waveform)) * self.dt
-
-        # Buffer calculations
+        # Buffer calculations - match FLR exactly
         tdi_start_ind = int(t0 / self.dt)
-        projection_buffer = (
+
+        # FLR has two different buffers:
+        # 1. check_tdi_buffer: used for projections_start_ind calculation
+        check_tdi_buffer = (
             int(100.0 * self.sampling_frequency) + 4 * self.order
         )
-        projections_start_ind = tdi_start_ind - 2 * projection_buffer
+
+        # 2. projection_buffer: used for safety checks
+        # Calculate max spacecraft distance like FLR does
+        max_sc_distance = 0.0
+        for sc_pos in orbits_data["positions"]:
+            distances = jnp.sqrt(jnp.sum(sc_pos * sc_pos, axis=1))
+            max_sc_distance = max(max_sc_distance, float(jnp.max(distances)))
+
+        projection_buffer = int(max_sc_distance * C_inv) + 4 * self.order
+
+        # Use check_tdi_buffer for projections_start_ind (like FLR)
+        projections_start_ind = tdi_start_ind - 2 * check_tdi_buffer
+
+        # Fix time array to align projections_start_ind with t=0
+        # This matches FLR behavior and fixes scaling issues
+        t_data = (
+            jnp.arange(len(input_waveform)) - projections_start_ind
+        ) * self.dt
+        # Trim time and waveform data to match orbital data
+        # Match FLR behavior
+        if t_data.max() > orbits_data["time"].max():
+            max_ind = jnp.where(orbits_data["time"] >= t_data.max())[0][-1]
+            t_data = t_data[:max_ind]
+            input_waveform = input_waveform[:max_ind]
 
         if projections_start_ind < projection_buffer:
             raise ValueError("Need to increase t0. Buffer not large enough.")
@@ -200,6 +229,7 @@ class LISAResponse:
                 x0_array,
                 x1_array,
                 L_array,
+                orbits_data["time"],  # Added: orbital time points
                 self.num_pts,
                 projections_start_ind,
                 self.sampling_frequency,
@@ -209,6 +239,13 @@ class LISAResponse:
             )
 
             y_gw = y_gw.at[link_idx].set(link_projection)
+
+        # Apply garbage removal to projections to match FLR behavior
+        # Zero out the projection buffer regions at start and end
+        y_gw = y_gw.at[:, :projections_start_ind].set(0.0)
+        end_garbage_ind = -projections_start_ind + self.num_pts
+        if end_garbage_ind < y_gw.shape[1]:
+            y_gw = y_gw.at[:, end_garbage_ind:].set(0.0)
 
         return y_gw
 
