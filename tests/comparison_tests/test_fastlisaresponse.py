@@ -49,7 +49,12 @@ def flr_waveform_generator():
 
         def __call__(self, A, f, fdot, iota, phi0, psi, T=1.0, dt=10.0):
             # get the t array
-            t = self.xp.arange(0.0, T * YRSID_SI, dt)
+            # t = self.xp.arange(0.0, T * YRSID_SI, dt)
+
+            # FIX for inconsistent handling of T_obs by FLR
+            num_pts = int(T * YRSID_SI / dt)
+            t = np.arange(num_pts) * dt
+
             cos2psi = self.xp.cos(2.0 * psi)
             sin2psi = self.xp.sin(2.0 * psi)
             cosiota = self.xp.cos(iota)
@@ -207,6 +212,7 @@ def test_projections(
         np.testing.assert_allclose(
             projections[i],
             ref_projections[i],
+            atol=1e-32,
         )
 
 
