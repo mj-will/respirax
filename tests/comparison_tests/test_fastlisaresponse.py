@@ -144,6 +144,72 @@ def flr_response(
     return gb_lisa_esa
 
 
+def test_projections(
+    flr_waveform_generator,
+    flr_response,
+    intrinsic_parameters,
+    sky_parameters,
+    sampling_frequency,
+    t_obs,
+    t0,
+    order,
+):
+    dt = 1 / sampling_frequency
+    # define GB parameters
+    waveform = flr_waveform_generator(
+        intrinsic_parameters["A"],
+        intrinsic_parameters["f"],
+        intrinsic_parameters["fdot"],
+        intrinsic_parameters["iota"],
+        intrinsic_parameters["phi0"],
+        intrinsic_parameters["psi"],
+        T=t_obs,
+        dt=dt,
+    )
+
+    flr_response.response_model.get_projections(
+        waveform,
+        sky_parameters["lam"],
+        sky_parameters["beta"],
+        t0=t0,
+    )
+    ref_projections = flr_response.response_model.y_gw
+
+    orbits_file = flr_response.response_model.response_orbits.filename
+    orbital_data = load_lisa_orbits(orbits_file)
+    interpolated_orbital_data = interpolate_orbital_data(
+        orbital_data,
+        grid=True,
+    )
+
+    response = LISAResponse(
+        sampling_frequency=sampling_frequency,
+        num_pts=int(t_obs * sampling_frequency * YRSID_SI),
+        order=order,
+    )
+    print("Calculating projections")
+    projections = response.get_projections(
+        waveform,
+        sky_parameters["lam"],
+        sky_parameters["beta"],
+        interpolated_orbital_data,
+        t0=t0,
+    )
+    print("Checking projections")
+    # FLR has shape (links, time)
+    assert projections.shape == ref_projections.shape, (
+        "Projections shape should match"
+    )
+    assert np.all(np.isfinite(projections)), "Projections should be finite"
+    # Check values match reasonably
+    for i in range(projections.shape[0]):
+        print(f"Checking projection {i}")
+        np.testing.assert_allclose(
+            projections[i],
+            ref_projections[i],
+        )
+
+
 def test_response(
     flr_waveform_generator,
     flr_response,
