@@ -11,7 +11,6 @@ from .interpolation import (
 )
 from .tdi import TDIProcessor
 from .utils import (
-    dot_product_1d,
     get_basis_vecs,
     normalize_vector,
     xi_projections,
@@ -69,10 +68,10 @@ def _compute_single_link_response(
         u, v, n_all
     )
 
-    # Vectorized dot products
-    k_dot_n_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, n_all)
-    k_dot_x0_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, x0_all)
-    k_dot_x1_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, x1_all)
+    # Vectorized dot products using einsum
+    k_dot_n_all = jnp.einsum("i,ji->j", k, n_all)
+    k_dot_x0_all = jnp.einsum("i,ji->j", k, x0_all)
+    k_dot_x1_all = jnp.einsum("i,ji->j", k, x1_all)
 
     # Vectorized delay calculations
     delay0_all = t_values - k_dot_x0_all * C_inv

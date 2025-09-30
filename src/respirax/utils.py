@@ -43,25 +43,6 @@ def get_basis_vecs(
 
 
 @jax.jit
-def dot_product_1d(arr1: jnp.ndarray, arr2: jnp.ndarray) -> float:
-    """Compute dot product of two 3D vectors.
-
-    Parameters
-    ----------
-    arr1 : jnp.ndarray
-        First vector of shape (3,)
-    arr2 : jnp.ndarray
-        Second vector of shape (3,)
-
-    Returns
-    -------
-    float
-        Scalar dot product
-    """
-    return jnp.sum(arr1 * arr2)
-
-
-@jax.jit
 def xi_projections(
     u: jnp.ndarray, v: jnp.ndarray, n: jnp.ndarray
 ) -> Tuple[float, float]:
@@ -81,8 +62,8 @@ def xi_projections(
     Tuple[float, float]
         Tuple of (xi_p, xi_c) projections for plus and cross polarizations
     """
-    u_dot_n = dot_product_1d(u, n)
-    v_dot_n = dot_product_1d(v, n)
+    u_dot_n = jnp.dot(u, n)
+    v_dot_n = jnp.dot(v, n)
 
     xi_p = 0.5 * ((u_dot_n * u_dot_n) - (v_dot_n * v_dot_n))
     xi_c = u_dot_n * v_dot_n
@@ -106,40 +87,6 @@ def normalize_vector(vec: jnp.ndarray) -> jnp.ndarray:
     """
     norm = jnp.sqrt(jnp.sum(vec * vec))
     return vec / norm
-
-
-def get_factorial(n: int) -> float:
-    """Compute factorial of n.
-
-    Args:
-        n: Integer to compute factorial of
-
-    Returns:
-        Factorial value as float
-    """
-    if n <= 1:
-        return 1.0
-    result = 1.0
-    for i in range(2, n + 1):
-        result *= i
-    return result
-
-
-def generate_factorial_array(max_n: int) -> jnp.ndarray:
-    """Generate array of factorials up to max_n.
-
-    Parameters
-    ----------
-    max_n : int
-        Maximum value to compute factorial for
-
-    Returns
-    -------
-    jnp.ndarray
-        Array of factorials [0!, 1!, 2!, ..., max_n!]
-    """
-    factorials = jnp.array([get_factorial(i) for i in range(max_n + 1)])
-    return factorials
 
 
 @jax.jit

@@ -5,8 +5,6 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 
-from .utils import generate_factorial_array
-
 
 def prepare_interpolation_coefficients(
     order: int, num_A: int = 1001
@@ -28,7 +26,7 @@ def prepare_interpolation_coefficients(
         - E_coeffs: Array of E coefficient values
         - deps: Spacing between epsilon values
     """
-    factorials = generate_factorial_array(order + 10)
+    factorials = jax.scipy.special.factorial(jnp.arange(order + 10))
     deps = 1.0 / (num_A - 1)
     eps = jnp.arange(num_A) * deps
 
