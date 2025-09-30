@@ -232,7 +232,7 @@ def test_response(
     )
     assert np.all(np.isfinite(projections)), "Projections should be finite"
     # Check values match reasonably
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         projections,
         ref_projections,
     )
