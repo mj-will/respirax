@@ -124,16 +124,15 @@ class TDIProcessor:
         orbital_ltt : (6, M) jnp.ndarray
             Orbital light travel times for interpolation.
         tdi_type : str, optional
-            Type of TDI ("1st generation" or "2nd generation"), by default "1st generation"
+            Type of TDI, by default "1st generation"
 
         Returns
         -------
         Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
             Time series of the TDI channels (X, Y, Z)
         """
-
-        tdi_combinations = self.setup_tdi_combinations(tdi_type)
         num_points = t_arr.shape[0]
+        tdi_combinations = self.setup_tdi_combinations(tdi_type)
 
         assert input_links.shape == (6, num_points), (
             f"input_links shape {input_links.shape}, "
@@ -143,7 +142,8 @@ class TDIProcessor:
             f"orbital_ltt first dim {orbital_ltt.shape[0]}, expected 6"
         )
 
-        def process_term(tdi_term, permutation, channel_sum):
+        def process_term_optimized(tdi_term, permutation):
+            """Process a single TDI term with JAX optimizations."""
             base_link = self.cyclic_permutation(tdi_term["link"], permutation)
             delay_links = [
                 self.cyclic_permutation(link, permutation)
@@ -151,26 +151,37 @@ class TDIProcessor:
             ]
             sign = tdi_term["sign"]
 
-            # Start with original time array (like FLR CUDA: delay = t)
+            # Start with original time array
             delays = t_arr.copy()
 
-            # Subtract light travel times evaluated at original time t
-            # This matches FLR: delay -= orbits.get_light_travel_time(t, link)
-            for delay_link in delay_links:
-                link_idx = self.link_indices[delay_link]
-                # Interpolate light travel time at original time t
-                lt_at_t = jnp.interp(
-                    t_arr, orbital_time, orbital_ltt[link_idx]
+            # Vectorized light travel time subtraction
+            if delay_links:
+                # Get all link indices at once
+                link_indices = jnp.array(
+                    [self.link_indices[link] for link in delay_links]
                 )
-                delays = delays - lt_at_t
 
-            base_data = input_links[self.link_indices[base_link]]
+                # Vectorized interpolation for all delay links
+                def interp_ltt_single(link_idx):
+                    return jnp.interp(
+                        t_arr, orbital_time, orbital_ltt[link_idx]
+                    )
 
-            def interp_one(delay):
-                int_delay = (
-                    jnp.ceil(delay * self.sampling_frequency).astype(int) - 1
-                )
-                fraction = 1.0 + int_delay - delay * self.sampling_frequency
+                lt_values = jax.vmap(interp_ltt_single)(link_indices)
+                total_lt = jnp.sum(lt_values, axis=0)
+                delays = delays - total_lt
+
+            base_link_idx = self.link_indices[base_link]
+            base_data = input_links[base_link_idx]
+
+            # Vectorized delay computation
+            int_delays = (
+                jnp.ceil(delays * self.sampling_frequency).astype(int) - 1
+            )
+            fractions = 1.0 + int_delays - delays * self.sampling_frequency
+
+            # Vectorized interpolation
+            def interp_one(int_delay, fraction):
                 return lagrangian_interpolation_real(
                     base_data,
                     int_delay,
@@ -180,14 +191,16 @@ class TDIProcessor:
                     self.deps,
                 )
 
-            results = jax.vmap(interp_one)(delays)
-            return channel_sum + sign * results
+            results = jax.vmap(interp_one)(int_delays, fractions)
+            return sign * results
 
+        # Process all three permutations
         channels = []
         for permutation in range(3):
             channel_sum = jnp.zeros(num_points)
             for tdi_term in tdi_combinations:
-                channel_sum = process_term(tdi_term, permutation, channel_sum)
+                term_result = process_term_optimized(tdi_term, permutation)
+                channel_sum = channel_sum + term_result
             channels.append(channel_sum)
 
         return tuple(channels)
