@@ -44,13 +44,11 @@ def prepare_interpolation_coefficients(
 
     A_coeffs = jax.vmap(compute_A)(eps)
 
-    # Prepare E coefficients
-    E_coeffs = jnp.zeros(h - 1)
-    for j in range(1, h):
-        first_term = factorials[h - 1] / factorials[h - 1 - j]
-        second_term = factorials[h] / factorials[h + j]
-        value = first_term * second_term * ((-1.0) ** j)
-        E_coeffs = E_coeffs.at[j - 1].set(value)
+    # Prepare E coefficients - vectorized
+    j_values = jnp.arange(1, h)
+    first_terms = factorials[h - 1] / factorials[h - 1 - j_values]
+    second_terms = factorials[h] / factorials[h + j_values]
+    E_coeffs = first_terms * second_terms * ((-1.0) ** j_values)
 
     return A_coeffs, E_coeffs, deps
 
@@ -95,27 +93,28 @@ def lagrangian_interpolation(
     C = fraction
     D = fraction * (1.0 - fraction)
 
-    # Main interpolation loop
-    sum_hp = 0.0
-    sum_hc = 0.0
+    # Main interpolation loop - vectorized
+    j_values = jnp.arange(1, half_order)
+    E_values = E_coeffs[j_values - 1]
+    F_values = j_values + fraction
+    G_values = j_values + (1 - fraction)
 
-    for j in range(1, half_order):
-        E = E_coeffs[j - 1]
-        F = j + fraction
-        G = j + (1 - fraction)
+    # Get input indices with boundary checks
+    up_indices = jnp.clip(
+        delay_index + 1 + j_values - start_input_ind, 0, len(input_array) - 1
+    )
+    down_indices = jnp.clip(
+        delay_index - j_values - start_input_ind, 0, len(input_array) - 1
+    )
 
-        # Get input values with boundary checks
-        up_idx = delay_index + 1 + j - start_input_ind
-        down_idx = delay_index - j - start_input_ind
+    temp_up = input_array[up_indices]
+    temp_down = input_array[down_indices]
 
-        up_idx = jnp.clip(up_idx, 0, len(input_array) - 1)
-        down_idx = jnp.clip(down_idx, 0, len(input_array) - 1)
-
-        temp_up = input_array[up_idx]
-        temp_down = input_array[down_idx]
-
-        sum_hp += E * (temp_up.real / F + temp_down.real / G)
-        sum_hc += E * (temp_up.imag / F + temp_down.imag / G)
+    # Vectorized sum computation
+    hp_terms = temp_up.real / F_values + temp_down.real / G_values
+    hc_terms = temp_up.imag / F_values + temp_down.imag / G_values
+    sum_hp = jnp.sum(E_values * hp_terms)
+    sum_hc = jnp.sum(E_values * hc_terms)
 
     # Final terms
     up_idx = jnp.clip(
@@ -168,25 +167,25 @@ def lagrangian_interpolation_real(
     C = fraction
     D = fraction * (1.0 - fraction)
 
-    # Main interpolation loop
-    sum_val = 0.0
+    # Main interpolation loop - vectorized
+    j_values = jnp.arange(1, half_order)
+    E_values = E_coeffs[j_values - 1]
+    F_values = j_values + fraction
+    G_values = j_values + (1 - fraction)
 
-    for j in range(1, half_order):
-        E = E_coeffs[j - 1]
-        F = j + fraction
-        G = j + (1 - fraction)
+    # Get input indices with boundary checks
+    up_indices = jnp.clip(
+        delay_index + 1 + j_values - start_input_ind, 0, len(input_array) - 1
+    )
+    down_indices = jnp.clip(
+        delay_index - j_values - start_input_ind, 0, len(input_array) - 1
+    )
 
-        # Get input values with boundary checks
-        up_idx = delay_index + 1 + j - start_input_ind
-        down_idx = delay_index - j - start_input_ind
+    temp_up = input_array[up_indices]
+    temp_down = input_array[down_indices]
 
-        up_idx = jnp.clip(up_idx, 0, len(input_array) - 1)
-        down_idx = jnp.clip(down_idx, 0, len(input_array) - 1)
-
-        temp_up = input_array[up_idx]
-        temp_down = input_array[down_idx]
-
-        sum_val += E * (temp_up / F + temp_down / G)
+    # Vectorized sum computation
+    sum_val = jnp.sum(E_values * (temp_up / F_values + temp_down / G_values))
 
     # Final terms
     up_idx = jnp.clip(
