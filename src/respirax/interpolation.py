@@ -66,16 +66,26 @@ def lagrangian_interpolation(
     This function implements the Lagrangian interpolation scheme used in the
     original CUDA code for interpolating gravitational wave data.
 
-    Args:
-        input_array: Complex input array to interpolate from
-        delay_index: Integer part of the delay
-        fraction: Fractional part of delay interpolation
-        A_coeffs: Pre-computed A coefficient array
-        E_coeffs: Pre-computed E coefficient array
-        deps: Spacing between epsilon values
-        start_input_ind: Starting index offset in input array
+    Parameters
+    ----------
+    input_array: jnp.ndarray
+        Complex input array to interpolate from
+    delay_index: int
+        Integer part of the delay
+    fraction: float
+        Fractional part of delay interpolation
+    A_coeffs: jnp.ndarray
+        Pre-computed A coefficient array
+    E_coeffs: jnp.ndarray
+        Pre-computed E coefficient array
+    deps: float
+        Spacing between epsilon values
+    start_input_ind: int
+        Starting index offset in input array
 
-    Returns:
+    Returns
+    -------
+    Tuple[float, float]
         Tuple of (hp_interpolated, hc_interpolated) for plus and cross
         polarizations
     """
@@ -141,16 +151,26 @@ def lagrangian_interpolation_real(
 ) -> float:
     """Perform Lagrangian interpolation for real input.
 
-    Args:
-        input_array: Real input array to interpolate from
-        delay_index: Integer part of the delay
-        fraction: Fractional part of delay interpolation
-        A_coeffs: Pre-computed A coefficient array
-        E_coeffs: Pre-computed E coefficient array
-        deps: Spacing between epsilon values
-        start_input_ind: Starting index offset in input array
+    Parameters
+    ----------
+    input_array: jnp.ndarray
+        Real input array to interpolate from
+    delay_index: int
+        Integer part of the delay
+    fraction: float
+        Fractional part of delay interpolation
+    A_coeffs: jnp.ndarray
+        Pre-computed A coefficient array
+    E_coeffs: jnp.ndarray
+        Pre-computed E coefficient array
+    deps: float
+        Spacing between epsilon values
+    start_input_ind: int
+        Starting index offset in input array
 
-    Returns:
+    Returns
+    -------
+    float
         Interpolated real value
     """
     half_order = len(E_coeffs) + 1
