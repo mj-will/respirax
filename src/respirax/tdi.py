@@ -55,7 +55,7 @@ class TDIProcessor:
         self.A_coeffs, self.E_coeffs, self.deps = coeffs
 
         # Standard LISA link ordering
-        self.link_indices = {12: 1, 21: 0, 13: 3, 31: 2, 23: 5, 32: 4}
+        self.link_indices = {12: 0, 21: 5, 13: 3, 31: 2, 23: 1, 32: 4}
 
     def setup_tdi_combinations(
         self, tdi_type: str = "1st generation"

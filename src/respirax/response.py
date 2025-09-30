@@ -230,7 +230,7 @@ class LISAResponse:
 
         # Link spacecraft mappings (LISA convention)
         # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
-        sc_pairs = [(1, 2), (2, 1), (1, 3), (3, 1), (2, 3), (3, 2)]
+        sc_pairs = [(1, 2), (2, 3), (3, 1), (1, 3), (3, 2), (2, 1)]
 
         # Pre-organize orbital data for vectorized processing
         all_x0_arrays = []
