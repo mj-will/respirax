@@ -40,54 +40,75 @@ def _compute_single_link_response(
     E_coeffs: jnp.ndarray,
     deps: float,
 ) -> jnp.ndarray:
-    """Compute response for a single LISA link (JAX-compatible)."""
+    """Compute response for a single LISA link (vectorized)."""
 
-    def body_fun(i, output):
-        j = i + start_ind
+    # Get all time points we'll process
+    time_indices = jnp.arange(num_pts) + start_ind
+    t_values = t_data[time_indices]
 
-        t = t_data[j]
-
-        # Interpolate spacecraft positions at exact time t (like FLR)
+    # Vectorized spacecraft position interpolation for all time points
+    def interp_positions(t_val):
         x0 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
-            t, t_orbit, x0_array.T
+            t_val, t_orbit, x0_array.T
         ).T  # Receiver
         x1 = jax.vmap(jnp.interp, in_axes=(None, None, 0))(
-            t, t_orbit, x1_array.T
+            t_val, t_orbit, x1_array.T
         ).T  # Emitter
-        L = jnp.interp(t, t_orbit, L_array)  # Light travel time
+        L = jnp.interp(t_val, t_orbit, L_array)  # Light travel time
+        return x0, x1, L
 
-        link_vec = x0 - x1
-        n = normalize_vector(link_vec)
+    # Apply to all time values at once
+    x0_all, x1_all, L_all = jax.vmap(interp_positions)(t_values)
 
-        xi_p, xi_c = xi_projections(u, v, n)
+    # Vectorized link vector computation
+    link_vecs = x0_all - x1_all
+    n_all = jax.vmap(normalize_vector)(link_vecs)
 
-        k_dot_n = dot_product_1d(k, n)
-        k_dot_x0 = dot_product_1d(k, x0)
-        k_dot_x1 = dot_product_1d(k, x1)
+    # Vectorized xi projections
+    xi_p_all, xi_c_all = jax.vmap(xi_projections, in_axes=(None, None, 0))(
+        u, v, n_all
+    )
 
-        delay0 = t - k_dot_x0 * C_inv
-        delay1 = t - L - k_dot_x1 * C_inv
+    # Vectorized dot products
+    k_dot_n_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, n_all)
+    k_dot_x0_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, x0_all)
+    k_dot_x1_all = jax.vmap(dot_product_1d, in_axes=(None, 0))(k, x1_all)
 
-        integer_delay0 = jnp.ceil(delay0 * sampling_frequency).astype(int) - 1
-        fraction0 = 1.0 + integer_delay0 - delay0 * sampling_frequency
+    # Vectorized delay calculations
+    delay0_all = t_values - k_dot_x0_all * C_inv
+    delay1_all = t_values - L_all - k_dot_x1_all * C_inv
 
-        integer_delay1 = jnp.ceil(delay1 * sampling_frequency).astype(int) - 1
-        fraction1 = 1.0 + integer_delay1 - delay1 * sampling_frequency
+    # Vectorized integer delays and fractions
+    integer_delay0_all = (
+        jnp.ceil(delay0_all * sampling_frequency).astype(int) - 1
+    )
+    fraction0_all = 1.0 + integer_delay0_all - delay0_all * sampling_frequency
 
-        hp_del0, hc_del0 = lagrangian_interpolation(
-            input_waveform, integer_delay0, fraction0, A_coeffs, E_coeffs, deps
+    integer_delay1_all = (
+        jnp.ceil(delay1_all * sampling_frequency).astype(int) - 1
+    )
+    fraction1_all = 1.0 + integer_delay1_all - delay1_all * sampling_frequency
+
+    # Vectorized Lagrangian interpolation
+    def interpolate_single(int_delay, fraction):
+        return lagrangian_interpolation(
+            input_waveform, int_delay, fraction, A_coeffs, E_coeffs, deps
         )
-        hp_del1, hc_del1 = lagrangian_interpolation(
-            input_waveform, integer_delay1, fraction1, A_coeffs, E_coeffs, deps
-        )
 
-        pre_factor = 1.0 / (1.0 - k_dot_n)
-        large_factor = (hp_del0 - hp_del1) * xi_p + (hc_del0 - hc_del1) * xi_c
+    hp_del0_all, hc_del0_all = jax.vmap(interpolate_single)(
+        integer_delay0_all, fraction0_all
+    )
+    hp_del1_all, hc_del1_all = jax.vmap(interpolate_single)(
+        integer_delay1_all, fraction1_all
+    )
 
-        return output.at[i].set(pre_factor * large_factor)
+    # Vectorized final computation
+    pre_factor_all = 1.0 / (1.0 - k_dot_n_all)
+    large_factor_all = (hp_del0_all - hp_del1_all) * xi_p_all + (
+        hc_del0_all - hc_del1_all
+    ) * xi_c_all
 
-    output0 = jnp.zeros(num_pts)
-    return jax.lax.fori_loop(0, num_pts, body_fun, output0)
+    return pre_factor_all * large_factor_all
 
 
 class LISAResponse:
@@ -211,16 +232,25 @@ class LISAResponse:
         # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
         sc_pairs = [(1, 2), (2, 1), (1, 3), (3, 1), (2, 3), (3, 2)]
 
-        # Process each link
+        # Pre-organize orbital data for vectorized processing
+        all_x0_arrays = []
+        all_x1_arrays = []
+        all_L_arrays = []
+
         for link_idx in range(NLINKS):
             sc0, sc1 = sc_pairs[link_idx]
+            all_x0_arrays.append(orbits_data["positions"][sc0 - 1])
+            all_x1_arrays.append(orbits_data["positions"][sc1 - 1])
+            all_L_arrays.append(orbits_data["light_travel_times"][link_idx])
 
-            # Get spacecraft positions for this link
-            x0_array = orbits_data["positions"][sc0 - 1]  # 0-indexed
-            x1_array = orbits_data["positions"][sc1 - 1]
-            L_array = orbits_data["light_travel_times"][link_idx]
+        # Stack arrays for vectorized processing
+        x0_stack = jnp.stack(all_x0_arrays)  # (6, time, 3)
+        x1_stack = jnp.stack(all_x1_arrays)  # (6, time, 3)
+        L_stack = jnp.stack(all_L_arrays)  # (6, time)
 
-            link_projection = self._compute_single_link_response_jit(
+        # Vectorized link processing function
+        def process_single_link_vectorized(x0_array, x1_array, L_array):
+            return self._compute_single_link_response_jit(
                 input_waveform,
                 t_data,
                 k,
@@ -229,7 +259,7 @@ class LISAResponse:
                 x0_array,
                 x1_array,
                 L_array,
-                orbits_data["time"],  # Added: orbital time points
+                orbits_data["time"],
                 self.num_pts,
                 projections_start_ind,
                 self.sampling_frequency,
@@ -238,7 +268,10 @@ class LISAResponse:
                 self.deps,
             )
 
-            y_gw = y_gw.at[link_idx].set(link_projection)
+        # Apply vectorized processing over all links
+        y_gw = jax.vmap(process_single_link_vectorized)(
+            x0_stack, x1_stack, L_stack
+        )
 
         # Apply garbage removal to projections to match FLR behavior
         # Zero out the projection buffer regions at start and end
