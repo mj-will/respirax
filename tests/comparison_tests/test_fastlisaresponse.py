@@ -166,7 +166,7 @@ def test_response(
         intrinsic_parameters["psi"],
         T=t_obs,
         dt=dt,
-    )[:-1]
+    )
 
     xyz_waveform_ref = flr_response(
         intrinsic_parameters["A"],
