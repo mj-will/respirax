@@ -1,8 +1,9 @@
 """Utility functions for LISA response computations."""
 
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-from typing import Tuple
 
 # Physical constants
 C_inv = 3.3356409519815204e-09  # Inverse speed of light in s/m

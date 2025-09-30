@@ -1,20 +1,22 @@
 """LISA response function computations using JAX."""
 
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-from typing import Tuple
-from .utils import (
-    get_basis_vecs,
-    xi_projections,
-    dot_product_1d,
-    normalize_vector,
-    xyz_to_aet,
-)
+
 from .interpolation import (
     lagrangian_interpolation,
     prepare_interpolation_coefficients,
 )
 from .tdi import TDIProcessor
+from .utils import (
+    dot_product_1d,
+    get_basis_vecs,
+    normalize_vector,
+    xi_projections,
+    xyz_to_aet,
+)
 
 # Physical constants
 C_inv = 3.3356409519815204e-09  # Inverse speed of light in s/m

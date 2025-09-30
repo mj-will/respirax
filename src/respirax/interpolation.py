@@ -1,8 +1,10 @@
 """Lagrangian interpolation functions for LISA response computations."""
 
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
-from typing import Tuple
+
 from .utils import generate_factorial_array
 
 

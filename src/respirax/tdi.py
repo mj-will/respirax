@@ -1,17 +1,14 @@
 """TDI (Time-Delay Interferometry) computations for LISA."""
 
+from typing import Dict, List, Tuple
+
 import jax
 import jax.numpy as jnp
-from typing import Tuple, List, Dict
+
 from .interpolation import (
     lagrangian_interpolation_real,
     prepare_interpolation_coefficients,
 )
-
-from typing import Tuple, List, Dict
-import jax
-import jax.numpy as jnp
-
 
 FIRST_GEN_COMBS: List[Dict] = [
     {"link": 13, "links_for_delay": [], "sign": +1},
