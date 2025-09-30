@@ -1,0 +1,15 @@
+import jax
+import pytest
+
+jax.config.update("jax_enable_x64", True)
+
+
+@pytest.fixture
+def orbits_file():
+    from respirax.orbital_utils import get_orbit_file_path
+
+    pytest.importorskip(
+        "lisatools",
+        reason="lisatools not available",
+    )
+    return get_orbit_file_path("equalarmlength")
