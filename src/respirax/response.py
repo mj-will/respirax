@@ -244,9 +244,6 @@ class LISAResponse:
         # Get basis vectors
         u, v, k = get_basis_vecs(lam, beta)
 
-        # Prepare output array
-        y_gw = jnp.zeros((NLINKS, self.num_pts))
-
         # Vectorized link processing function
         def process_single_link_vectorized(
             x0_array, x1_array, L_array, n_array
