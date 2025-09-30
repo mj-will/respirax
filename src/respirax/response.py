@@ -68,10 +68,10 @@ def _compute_single_link_response(
         u, v, n_all
     )
 
-    # Vectorized dot products using einsum
-    k_dot_n_all = jnp.einsum("i,ji->j", k, n_all)
-    k_dot_x0_all = jnp.einsum("i,ji->j", k, x0_all)
-    k_dot_x1_all = jnp.einsum("i,ji->j", k, x1_all)
+    # Vectorized dot products
+    k_dot_n_all = n_all @ k  # (N,)
+    k_dot_x0_all = x0_all @ k  # (N,)
+    k_dot_x1_all = x1_all @ k  # (N,)
 
     # Vectorized delay calculations
     delay0_all = t_values - k_dot_x0_all * C_inv
