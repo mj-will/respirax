@@ -73,33 +73,25 @@ def _compute_single_link_response(
     k_dot_x0_all = x0_all @ k  # (N,)
     k_dot_x1_all = x1_all @ k  # (N,)
 
-    # Vectorized delay calculations
-    delay0_all = t_values - k_dot_x0_all * C_inv
-    delay1_all = t_values - L_all - k_dot_x1_all * C_inv
-
-    # Vectorized integer delays and fractions
-    integer_delay0_all = (
-        jnp.ceil(delay0_all * sampling_frequency).astype(int) - 1
-    )
-    fraction0_all = 1.0 + integer_delay0_all - delay0_all * sampling_frequency
-
-    integer_delay1_all = (
-        jnp.ceil(delay1_all * sampling_frequency).astype(int) - 1
-    )
-    fraction1_all = 1.0 + integer_delay1_all - delay1_all * sampling_frequency
-
     # Vectorized Lagrangian interpolation
     def interpolate_single(int_delay, fraction):
         return lagrangian_interpolation(
             input_waveform, int_delay, fraction, A_coeffs, E_coeffs, deps
         )
 
-    hp_del0_all, hc_del0_all = jax.vmap(interpolate_single)(
-        integer_delay0_all, fraction0_all
-    )
-    hp_del1_all, hc_del1_all = jax.vmap(interpolate_single)(
-        integer_delay1_all, fraction1_all
-    )
+    def complex_delays(delay):
+        delay_all = t_values - delay
+        int_delay_all = (
+            jnp.ceil(delay_all * sampling_frequency).astype(int) - 1
+        )
+        fraction_all = 1.0 + int_delay_all - delay_all * sampling_frequency
+        hp_del_all, hc_del_all = jax.vmap(interpolate_single)(
+            int_delay_all, fraction_all
+        )
+        return hp_del_all, hc_del_all
+
+    hp_del0_all, hc_del0_all = complex_delays(k_dot_x0_all * C_inv)
+    hp_del1_all, hc_del1_all = complex_delays(L_all + k_dot_x1_all * C_inv)
 
     # Vectorized final computation
     pre_factor_all = 1.0 / (1.0 - k_dot_n_all)
