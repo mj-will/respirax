@@ -1,4 +1,4 @@
-name: LISATools Comparison Tests
+name: Comparison Tests
 
 on:
   push:
@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lisatools-comparison:
-    name: LISATools Comparison Tests
+  flr-comparison:
+    name: FLR Comparison Tests
 
     runs-on: ubuntu-latest
     steps:
