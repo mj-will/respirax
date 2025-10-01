@@ -144,9 +144,11 @@ class LISAResponse:
 
         for link_idx in range(NLINKS):
             sc0, sc1 = sc_pairs[link_idx]
-            all_x0_arrays.append(orbits_data["positions"][sc0 - 1])
-            all_x1_arrays.append(orbits_data["positions"][sc1 - 1])
-            all_L_arrays.append(orbits_data["light_travel_times"][link_idx])
+            all_x0_arrays.append(self.orbits_data["positions"][sc0 - 1])
+            all_x1_arrays.append(self.orbits_data["positions"][sc1 - 1])
+            all_L_arrays.append(
+                self.orbits_data["light_travel_times"][link_idx]
+            )
 
         # Stack arrays for vectorized processing
         self.x0_stack = jnp.stack(all_x0_arrays)  # (6, time, 3)
@@ -165,7 +167,7 @@ class LISAResponse:
         # 2. projection_buffer: used for safety checks
         # Calculate max spacecraft distance like FLR does
         max_sc_distance = 0.0
-        for sc_pos in orbits_data["positions"]:
+        for sc_pos in self.orbits_data["positions"]:
             distances = jnp.sqrt(jnp.sum(sc_pos * sc_pos, axis=1))
             max_sc_distance = max(max_sc_distance, float(jnp.max(distances)))
 
@@ -178,8 +180,8 @@ class LISAResponse:
             jnp.arange(self.num_pts) - self.projections_start_ind
         ) * self.dt
 
-        self.orbits_t = orbits_data["time"]
-        self.orbits_tmax = orbits_data["time"].max()
+        self.orbits_t = self.orbits_data["time"]
+        self.orbits_tmax = self.orbits_data["time"].max()
 
         if self.projections_start_ind < projection_buffer:
             raise ValueError(
