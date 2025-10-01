@@ -11,6 +11,7 @@ lisatools = pytest.importorskip(
 )
 
 
+@pytest.mark.comparison
 def test_orbital_data():
     """Test that our orbital data loading matches fastlisaresponse approach."""
     from lisatools.detector import EqualArmlengthOrbits
@@ -27,6 +28,7 @@ def test_orbital_data():
     assert np.allclose(respirax_orbits["positions"][0], orbits.x_base[:, 0, :])
 
 
+@pytest.mark.comparison
 def test_orbital_data_interpolation():
     """Test interpolation of orbital data matches fastlisaresponse approach."""
     from lisatools.detector import EqualArmlengthOrbits
