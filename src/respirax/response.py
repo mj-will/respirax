@@ -9,6 +9,7 @@ from .interpolation import (
     lagrangian_interpolation,
     prepare_interpolation_coefficients,
 )
+from .orbital_utils import interpolate_orbital_data
 from .tdi import TDIProcessor
 from .utils import (
     get_basis_vecs,
@@ -85,35 +86,35 @@ class LISAResponse:
     This class computes the response of the LISA detector to gravitational
     waves, including projections onto individual arms and TDI combinations.
 
+    Orbital data is interpolated onto a regular time grid for efficient
+    processing.
+
     Parameters
     ----------
     sampling_frequency : float
         Sampling frequency in Hz
     num_pts : int
         Number of output points
+    orbits_data : dict
+        Dictionary containing orbital information with keys:
+        - 'time': Array of time points
+        - 'positions': List of arrays with spacecraft positions
+        - 'light_travel_times': List of arrays with light travel times for each link
+        - 'normal_vectors': Array of normal vectors for each link
     order : int, optional
         Order of Lagrangian interpolation, by default 25
+    t0 : float, optional
+        Start time buffer, by default 10000.0
     """
 
     def __init__(
         self,
         sampling_frequency: float,
         num_pts: int,
-        orbits_data,
+        orbits_data: dict,
         order: int = 25,
         t0: float = 10000.0,
     ):
-        """Initialize LISA response calculator.
-
-        Parameters
-        ----------
-        sampling_frequency : float
-            Sampling frequency in Hz
-        num_pts : int
-            Number of output points
-        order : int, optional
-            Order of Lagrangian interpolation, by default 25
-        """
         self.sampling_frequency = sampling_frequency
         self.dt = 1.0 / sampling_frequency
         self.num_pts = num_pts
@@ -129,7 +130,8 @@ class LISAResponse:
         # Initialize TDI processor
         self.tdi_processor = TDIProcessor(sampling_frequency, order)
 
-        self.orbits_data = orbits_data
+        # Interpolate orbital data onto regular grid
+        self.orbits_data = interpolate_orbital_data(orbits_data, grid=True)
 
         # Link spacecraft mappings (LISA convention)
         # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
@@ -142,9 +144,11 @@ class LISAResponse:
 
         for link_idx in range(NLINKS):
             sc0, sc1 = sc_pairs[link_idx]
-            all_x0_arrays.append(orbits_data["positions"][sc0 - 1])
-            all_x1_arrays.append(orbits_data["positions"][sc1 - 1])
-            all_L_arrays.append(orbits_data["light_travel_times"][link_idx])
+            all_x0_arrays.append(self.orbits_data["positions"][sc0 - 1])
+            all_x1_arrays.append(self.orbits_data["positions"][sc1 - 1])
+            all_L_arrays.append(
+                self.orbits_data["light_travel_times"][link_idx]
+            )
 
         # Stack arrays for vectorized processing
         self.x0_stack = jnp.stack(all_x0_arrays)  # (6, time, 3)
@@ -163,7 +167,7 @@ class LISAResponse:
         # 2. projection_buffer: used for safety checks
         # Calculate max spacecraft distance like FLR does
         max_sc_distance = 0.0
-        for sc_pos in orbits_data["positions"]:
+        for sc_pos in self.orbits_data["positions"]:
             distances = jnp.sqrt(jnp.sum(sc_pos * sc_pos, axis=1))
             max_sc_distance = max(max_sc_distance, float(jnp.max(distances)))
 
@@ -176,8 +180,8 @@ class LISAResponse:
             jnp.arange(self.num_pts) - self.projections_start_ind
         ) * self.dt
 
-        self.orbits_t = orbits_data["time"]
-        self.orbits_tmax = orbits_data["time"].max()
+        self.orbits_t = self.orbits_data["time"]
+        self.orbits_tmax = self.orbits_data["time"].max()
 
         if self.projections_start_ind < projection_buffer:
             raise ValueError(

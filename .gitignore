@@ -214,3 +214,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project specific ignores
+# Profiling outputs from jax
+*.trace.json.gz
+*.xplane.pb

@@ -234,39 +234,3 @@ def interpolate_orbital_data(
         "links": data["links"],
         "source_file": data.get("source_file", None),
     }
-
-
-def compute_response_statistics(projections: jnp.ndarray) -> Dict:
-    """Compute basic statistics for response projections.
-
-    Parameters
-    ----------
-    projections : jnp.ndarray
-        Response projections with shape [links, time]
-
-    Returns
-    -------
-    Dict
-        Dictionary with statistics containing:
-
-        - shape : tuple
-            Shape of projections array
-        - rms_per_link : jnp.ndarray
-            RMS value for each link
-        - max_abs : float
-            Maximum absolute value
-        - mean_abs : float
-            Mean absolute value
-        - std_per_link : jnp.ndarray
-            Standard deviation for each link
-        - is_finite : bool
-            Whether all values are finite
-    """
-    return {
-        "shape": projections.shape,
-        "rms_per_link": jnp.sqrt(jnp.mean(projections**2, axis=1)),
-        "max_abs": jnp.max(jnp.abs(projections)),
-        "mean_abs": jnp.mean(jnp.abs(projections)),
-        "std_per_link": jnp.std(projections, axis=1),
-        "is_finite": jnp.all(jnp.isfinite(projections)),
-    }

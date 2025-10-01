@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from respirax import LISAResponse
-from respirax.orbital_utils import interpolate_orbital_data, load_lisa_orbits
+from respirax.orbital_utils import load_lisa_orbits
 from respirax.utils import YRSID_SI
 
 
@@ -57,29 +57,24 @@ def test_respirax_response(orbits_file):
     beta = 0.9805742971871619
     lam = 5.22979888
 
+    orbital_data = load_lisa_orbits(orbits_file)
+
     response = LISAResponse(
         sampling_frequency=sampling_frequency,
         num_pts=int(T * sampling_frequency * YRSID_SI),
         order=order,
+        orbits_data=orbital_data,
+        t0=t0,
     )
 
     print("Generating waveform...")
     waveform = waveform_generator(A, f, fdot, iota, phi0, psi, T=T, dt=dt)
-
-    orbital_data = load_lisa_orbits(orbits_file)
-
-    interpolated_orbital_data = interpolate_orbital_data(
-        orbital_data,
-        grid=True,
-    )
 
     # Get projections
     response, projections = response.compute_response(
         waveform,
         lam,
         beta,
-        interpolated_orbital_data,
-        t0=t0,
         tdi_type=tdi_gen,
         return_projections=True,
     )

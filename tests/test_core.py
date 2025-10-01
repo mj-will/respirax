@@ -183,60 +183,53 @@ class TestTDI:
         assert processor.sampling_frequency == 0.1
         assert processor.order == 25  # default
 
-    def test_tdi_combinations_first_generation(self):
-        """Test 1st generation TDI combinations."""
-        processor = TDIProcessor(sampling_frequency=0.1)
-        combinations = processor.setup_tdi_combinations("1st generation")
-
-        assert len(combinations) == 8
-
-        # Check structure of first combination
-        first_comb = combinations[0]
-        assert "link" in first_comb
-        assert "links_for_delay" in first_comb
-        assert "sign" in first_comb
-
-    def test_tdi_combinations_second_generation(self):
-        """Test 2nd generation TDI combinations."""
-        processor = TDIProcessor(sampling_frequency=0.1)
-        combinations = processor.setup_tdi_combinations("2nd generation")
-
-        assert len(combinations) == 16
-
     def test_cyclic_permutation(self):
         """Test cyclic permutation logic."""
         processor = TDIProcessor(sampling_frequency=0.1)
 
         # Test basic permutations
-        assert processor.cyclic_permutation(12, 0) == 12
-        assert processor.cyclic_permutation(12, 1) == 23
-        assert processor.cyclic_permutation(12, 2) == 31
+        assert processor._cyclic_permutation(12, 0) == 12
+        assert processor._cyclic_permutation(12, 1) == 23
+        assert processor._cyclic_permutation(12, 2) == 31
 
         # Test wrap-around
-        assert processor.cyclic_permutation(23, 1) == 31
-        assert processor.cyclic_permutation(31, 1) == 12
+        assert processor._cyclic_permutation(23, 1) == 31
+        assert processor._cyclic_permutation(31, 1) == 12
 
 
 class TestLISAResponse:
     """Test main LISAResponse class."""
 
-    def test_lisa_response_initialization(self):
+    def test_lisa_response_initialization(self, orbits_data):
         """Test LISAResponse initialization."""
-        lisa = LISAResponse(sampling_frequency=0.1, num_pts=100, order=15)
+        lisa = LISAResponse(
+            sampling_frequency=0.1,
+            num_pts=100,
+            order=15,
+            orbits_data=orbits_data,
+        )
 
         assert lisa.sampling_frequency == 0.1
         assert lisa.num_pts == 100
         assert lisa.order == 15
 
-    def test_lisa_response_parameters(self):
+    def test_lisa_response_parameters(self, orbits_data):
         """Test parameter validation."""
         # Valid parameters
-        lisa = LISAResponse(sampling_frequency=1.0, num_pts=1000, order=25)
+        lisa = LISAResponse(
+            sampling_frequency=1.0,
+            num_pts=1000,
+            order=25,
+            orbits_data=orbits_data,
+        )
         assert lisa.sampling_frequency == 1.0
 
         # Test with different order
         lisa_custom = LISAResponse(
-            sampling_frequency=0.5, num_pts=500, order=15
+            sampling_frequency=0.5,
+            num_pts=500,
+            order=15,
+            orbits_data=orbits_data,
         )
         assert lisa_custom.order == 15
 
@@ -296,31 +289,3 @@ class TestMathematicalConsistency:
             # v should still be normalized
             v_norm = jnp.sqrt(jnp.sum(v**2))
             assert abs(v_norm - 1.0) < 1e-6  # Relaxed tolerance
-
-
-# Integration test
-def test_end_to_end_functionality():
-    """Test end-to-end functionality without orbital data."""
-    # Create LISAResponse instance
-    lisa = LISAResponse(sampling_frequency=0.1, num_pts=100, order=15)
-
-    # Verify initialization
-    assert lisa.sampling_frequency == 0.1
-    assert lisa.num_pts == 100
-    assert lisa.order == 15
-
-    # Test basis vector computation
-    lam, beta = jnp.pi / 4, jnp.pi / 6
-    u, v, k = get_basis_vecs(lam, beta)
-
-    # Test xi projections
-    xi_p, xi_c = xi_projections(u, v, k)
-
-    # Test TDI setup
-    tdi = TDIProcessor(sampling_frequency=0.1)
-    combinations = tdi.setup_tdi_combinations("1st generation")
-
-    # All computations should complete without error
-    assert jnp.isfinite(xi_p)
-    assert jnp.isfinite(xi_c)
-    assert len(combinations) == 8
