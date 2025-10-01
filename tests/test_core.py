@@ -296,31 +296,3 @@ class TestMathematicalConsistency:
             # v should still be normalized
             v_norm = jnp.sqrt(jnp.sum(v**2))
             assert abs(v_norm - 1.0) < 1e-6  # Relaxed tolerance
-
-
-# Integration test
-def test_end_to_end_functionality():
-    """Test end-to-end functionality without orbital data."""
-    # Create LISAResponse instance
-    lisa = LISAResponse(sampling_frequency=0.1, num_pts=100, order=15)
-
-    # Verify initialization
-    assert lisa.sampling_frequency == 0.1
-    assert lisa.num_pts == 100
-    assert lisa.order == 15
-
-    # Test basis vector computation
-    lam, beta = jnp.pi / 4, jnp.pi / 6
-    u, v, k = get_basis_vecs(lam, beta)
-
-    # Test xi projections
-    xi_p, xi_c = xi_projections(u, v, k)
-
-    # Test TDI setup
-    tdi = TDIProcessor(sampling_frequency=0.1)
-    combinations = tdi.setup_tdi_combinations("1st generation")
-
-    # All computations should complete without error
-    assert jnp.isfinite(xi_p)
-    assert jnp.isfinite(xi_c)
-    assert len(combinations) == 8

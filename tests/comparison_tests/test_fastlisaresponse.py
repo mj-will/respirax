@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from respirax.orbital_utils import interpolate_orbital_data, load_lisa_orbits
+from respirax.orbital_utils import load_lisa_orbits
 from respirax.response import LISAResponse
 from respirax.utils import YRSID_SI
 
@@ -181,17 +181,13 @@ def test_projections(
     ref_projections = flr_response.response_model.y_gw
 
     orbits_file = flr_response.response_model.response_orbits.filename
-    orbital_data = load_lisa_orbits(orbits_file)
-    interpolated_orbital_data = interpolate_orbital_data(
-        orbital_data,
-        grid=True,
-    )
+    orbits_data = load_lisa_orbits(orbits_file)
 
     response = LISAResponse(
         sampling_frequency=sampling_frequency,
         num_pts=int(t_obs * sampling_frequency * YRSID_SI),
         order=order,
-        orbits_data=interpolated_orbital_data,
+        orbits_data=orbits_data,
         t0=t0,
     )
     print("Calculating projections")
@@ -253,11 +249,17 @@ def test_response(
     ref_projections = flr_response.response_model.y_gw
 
     orbits_file = flr_response.response_model.response_orbits.filename
-    orbital_data = load_lisa_orbits(orbits_file)
-    interpolated_orbital_data = interpolate_orbital_data(
-        orbital_data,
-        grid=True,
+    orbits_data = load_lisa_orbits(orbits_file)
+
+    response = LISAResponse(
+        sampling_frequency=sampling_frequency,
+        num_pts=int(t_obs * sampling_frequency * YRSID_SI),
+        orbits_data=orbits_data,
+        order=order,
+        t0=t0,
     )
+
+    interpolated_orbital_data = response.orbits_data
     # Check the orbital data matches
     orbits = flr_response.response_model.response_orbits
     assert np.allclose(orbits.t, interpolated_orbital_data["time"])
@@ -281,15 +283,6 @@ def test_response(
         interpolated_orbital_data["normal_vectors"].transpose(1, 0, 2),
     )
     print("Orbital data matches")
-
-    response = LISAResponse(
-        sampling_frequency=sampling_frequency,
-        num_pts=int(t_obs * sampling_frequency * YRSID_SI),
-        orbits_data=interpolated_orbital_data,
-        order=order,
-        t0=t0,
-    )
-
     xyz_waveform, projections = response.compute_response(
         waveform,
         sky_parameters["lam"],
