@@ -149,6 +149,7 @@ def flr_response(
     return gb_lisa_esa
 
 
+@pytest.mark.comparison
 def test_projections(
     flr_waveform_generator,
     flr_response,
@@ -212,6 +213,7 @@ def test_projections(
         )
 
 
+@pytest.mark.comparison
 def test_response(
     flr_waveform_generator,
     flr_response,
