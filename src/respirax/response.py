@@ -9,6 +9,7 @@ from .interpolation import (
     lagrangian_interpolation,
     prepare_interpolation_coefficients,
 )
+from .orbital_utils import interpolate_orbital_data
 from .tdi import TDIProcessor
 from .utils import (
     get_basis_vecs,
@@ -85,35 +86,35 @@ class LISAResponse:
     This class computes the response of the LISA detector to gravitational
     waves, including projections onto individual arms and TDI combinations.
 
+    Orbital data is interpolated onto a regular time grid for efficient
+    processing.
+
     Parameters
     ----------
     sampling_frequency : float
         Sampling frequency in Hz
     num_pts : int
         Number of output points
+    orbits_data : dict
+        Dictionary containing orbital information with keys:
+        - 'time': Array of time points
+        - 'positions': List of arrays with spacecraft positions
+        - 'light_travel_times': List of arrays with light travel times for each link
+        - 'normal_vectors': Array of normal vectors for each link
     order : int, optional
         Order of Lagrangian interpolation, by default 25
+    t0 : float, optional
+        Start time buffer, by default 10000.0
     """
 
     def __init__(
         self,
         sampling_frequency: float,
         num_pts: int,
-        orbits_data,
+        orbits_data: dict,
         order: int = 25,
         t0: float = 10000.0,
     ):
-        """Initialize LISA response calculator.
-
-        Parameters
-        ----------
-        sampling_frequency : float
-            Sampling frequency in Hz
-        num_pts : int
-            Number of output points
-        order : int, optional
-            Order of Lagrangian interpolation, by default 25
-        """
         self.sampling_frequency = sampling_frequency
         self.dt = 1.0 / sampling_frequency
         self.num_pts = num_pts
@@ -129,7 +130,8 @@ class LISAResponse:
         # Initialize TDI processor
         self.tdi_processor = TDIProcessor(sampling_frequency, order)
 
-        self.orbits_data = orbits_data
+        # Interpolate orbital data onto regular grid
+        self.orbits_data = interpolate_orbital_data(orbits_data, grid=True)
 
         # Link spacecraft mappings (LISA convention)
         # Links: 12, 21, 13, 31, 23, 32 -> indices 0,1,2,3,4,5
