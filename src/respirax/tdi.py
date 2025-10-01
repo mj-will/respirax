@@ -153,7 +153,7 @@ class TDIProcessor:
         return fp[i] * (1.0 - frac) + fp[i + 1] * frac
 
     @staticmethod
-    def _cyclic_perm(links: jnp.ndarray, p: int):
+    def _cyclic_permutation(links: jnp.ndarray, p: int):
         """Apply cyclic permutation (1→2→3→1) to LISA link codes.
 
         Parameters
@@ -275,10 +275,10 @@ class TDIProcessor:
 
         # Apply cyclic permutations to get all 3 TDI channels (X,Y,Z)
         base_perm = jnp.stack(
-            [self._cyclic_perm(base, p) for p in (0, 1, 2)], axis=0
+            [self._cyclic_permutation(base, p) for p in (0, 1, 2)], axis=0
         )  # (3,T) base links for 3 permutations
         delay_perm = jnp.stack(
-            [self._cyclic_perm(delay_links, p) for p in (0, 1, 2)], 0
+            [self._cyclic_permutation(delay_links, p) for p in (0, 1, 2)], 0
         )  # (3,T,L) delay links for 3 permutations
 
         # Convert link codes to array indices
