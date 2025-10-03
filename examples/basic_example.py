@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from respirax import (
     LISAResponse,
     get_orbit_file_path,
-    interpolate_orbital_data,
     load_lisa_orbits,
 )
 from respirax.utils import YRSID_SI
@@ -51,11 +50,8 @@ def main():
     # Get orbit file path, this requires lisaanalysistools
     # Alternatively, you can provide your own orbit file path here
     orbits_file = get_orbit_file_path(orbit_type="equalarmlength")
-    # Load and interpolate LISA orbits
-    orbit_data = load_lisa_orbits(orbits_file)
-
-    # Interpolate on a regular grid for use with the response
-    interp_data = interpolate_orbital_data(orbit_data, grid=True)
+    # Load the LISA orbits
+    orbits_data = load_lisa_orbits(orbits_file)
 
     # Define waveform parameters
     A = 1.084702251e-22
@@ -73,7 +69,7 @@ def main():
         sampling_frequency=sampling_frequency,
         num_pts=int(T * sampling_frequency * YRSID_SI),
         order=25,
-        orbits_data=interp_data,
+        orbits_data=orbits_data,
         t0=10000.0,
     )
 
